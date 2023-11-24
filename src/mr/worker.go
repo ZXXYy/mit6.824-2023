@@ -46,7 +46,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			// read taskfile
 			file, err := os.Open("./" + taskfile)
 			if err != nil {
-				fmt.Printf("cannot open %v", taskfile)
+				fmt.Printf("[map] cannot open taskfile %v", taskfile)
 				return
 			}
 			content, err := ioutil.ReadAll(file)
@@ -69,7 +69,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				intermediatefiles = append(intermediatefiles, intermediatefile)
 				f, err := os.OpenFile(intermediatefile, os.O_CREATE|os.O_WRONLY, 0644)
 				if err != nil {
-					log.Fatalf("cannot open %v", intermediatefile)
+					log.Fatalf("[map] cannot open intermediatefile %v", intermediatefile)
 				}
 				enc := json.NewEncoder(f)
 				for _, kv := range intermediate[i] {
@@ -84,7 +84,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				intermediatefile := "mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(reduceTaskNum)
 				file, err := os.Open(intermediatefile)
 				if err != nil {
-					log.Fatalf("cannot open %v", intermediatefile)
+					log.Fatalf("[reduce] cannot open intermediatefile %v", intermediatefile)
 				}
 				dec := json.NewDecoder(file)
 				for {
@@ -95,11 +95,6 @@ func Worker(mapf func(string, string) []KeyValue,
 					intermediate = append(intermediate, kv)
 				}
 				file.Close()
-				err = os.Remove(intermediatefile)
-				if err != nil {
-					fmt.Println("[Reduce] Clean intermediatefile err:", err)
-					return
-				}
 			}
 			sort.Sort(ByKey(intermediate))
 
@@ -213,7 +208,6 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	if err == nil {
 		return true
 	}
-
 	fmt.Println(err)
 	return false
 }

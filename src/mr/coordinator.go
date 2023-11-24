@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,7 @@ type FileStatus struct {
 type Coordinator struct {
 	// Your definitions here.
 	files             map[string]FileStatus
+	fileMutex         sync.Mutex
 	filesIndex        map[string]int
 	intermediateFiles map[string]FileStatus
 	intermediateIndex map[string]int
@@ -35,6 +37,7 @@ type Coordinator struct {
 // Your code here -- RPC handlers for the worker to call.
 func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 	// deal with crash
+	c.fileMutex.Lock()
 	for file, status := range c.files {
 		if status.status == Process && time.Now().Unix()-status.timestamp > 10 {
 			c.files[file] = FileStatus{Ready, 0}
@@ -45,6 +48,7 @@ func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 			c.intermediateFiles[file] = FileStatus{Ready, 0}
 		}
 	}
+	c.fileMutex.Unlock()
 	for file, status := range c.files {
 		if status.status == Ready {
 			reply.TaskType = "map"
@@ -53,7 +57,9 @@ func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 			reply.Nmap = len(c.files)
 			reply.MapTaskNum = c.filesIndex[file]
 			reply.ReduceTaskNum = 0
+			c.fileMutex.Lock()
 			c.files[file] = FileStatus{Process, time.Now().Unix()}
+			c.fileMutex.Unlock()
 			// fmt.Printf("assign map task %s\n", file)
 			return nil
 		}
@@ -66,7 +72,9 @@ func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 			reply.Nmap = len(c.files)
 			reply.MapTaskNum = 0
 			reply.ReduceTaskNum = c.intermediateIndex[file]
+			c.fileMutex.Lock()
 			c.intermediateFiles[file] = FileStatus{Process, time.Now().Unix()}
+			c.fileMutex.Unlock()
 			return nil
 		}
 	}
@@ -74,12 +82,14 @@ func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 }
 
 func (c *Coordinator) FinishTask(args *FinishArgs, reply *FinishReply) error {
+	c.fileMutex.Lock()
 	if args.TaskType == "map" {
 		// fmt.Printf("finish map task %s\n", args.TaskFile)
 		c.files[args.TaskFile] = FileStatus{Done, time.Now().Unix()}
 	} else if args.TaskType == "reduce" {
 		c.intermediateFiles[args.TaskFile] = FileStatus{Done, time.Now().Unix()}
 	}
+	c.fileMutex.Unlock()
 	return nil
 }
 
@@ -119,7 +129,12 @@ func (c *Coordinator) Done() bool {
 			return false
 		}
 	}
-
+	// remove intermediate files
+	for i := 0; i < len(c.files); i++ {
+		for j := 0; j < c.nReduce; j++ {
+			os.Remove("mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(j))
+		}
+	}
 	return true
 }
 
@@ -133,6 +148,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		intermediateFiles: make(map[string]FileStatus),
 		intermediateIndex: make(map[string]int),
 		nReduce:           nReduce,
+		fileMutex:         sync.Mutex{},
 	}
 	for idx, file := range files {
 		c.files[file] = FileStatus{Ready, 0}
