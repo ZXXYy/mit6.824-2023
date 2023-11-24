@@ -77,7 +77,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				f.Close()
 			}
-			CallFinishTask(task, taskfile, intermediatefiles)
+			CallFinishTask(task, taskfile)
 		} else if task == "reduce" {
 			intermediate := []KeyValue{}
 			for i := 0; i < nmap; i++ {
@@ -125,7 +125,7 @@ func Worker(mapf func(string, string) []KeyValue,
 
 			ofile.Close()
 
-			CallFinishTask(task, strconv.Itoa(reduceTaskNum), []string{})
+			CallFinishTask(task, strconv.Itoa(reduceTaskNum))
 
 		}
 		time.Sleep(time.Second)
@@ -141,25 +141,24 @@ func AvailableForTask() (string, string, int, int, int, int) {
 	if ok {
 		return reply.TaskType, reply.TaskFile, reply.NReduce, reply.Nmap, reply.MapTaskNum, reply.ReduceTaskNum
 	} else {
-		fmt.Printf("call failed!\n")
+		fmt.Printf("call failed! %d\n", time.Now().Unix())
 		os.Exit(0)
 	}
 	return "", "", 0, 0, 0, 0
 }
 
-func CallFinishTask(taskType string, taskFile string, intermediateFiles []string) {
+func CallFinishTask(taskType string, taskFile string) {
 	// declare an argument structure.
 	args := FinishArgs{}
 	// declare a reply structure.
 	reply := FinishReply{}
 	args.TaskType = taskType
 	args.TaskFile = taskFile
-	args.IntermediateFiles = intermediateFiles
 	ok := call("Coordinator.FinishTask", &args, &reply)
 	if ok {
 		return
 	} else {
-		fmt.Printf("call failed!\n")
+		fmt.Printf("call failed! %d\n", time.Now().Unix())
 		os.Exit(0)
 	}
 	return

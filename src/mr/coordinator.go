@@ -64,6 +64,11 @@ func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 			return nil
 		}
 	}
+	for _, status := range c.files {
+		if status.status == Ready || status.status == Process {
+			return nil
+		}
+	}
 	for file, status := range c.intermediateFiles {
 		if status.status == Ready {
 			reply.TaskType = "reduce"
@@ -88,6 +93,10 @@ func (c *Coordinator) FinishTask(args *FinishArgs, reply *FinishReply) error {
 		c.files[args.TaskFile] = FileStatus{Done, time.Now().Unix()}
 	} else if args.TaskType == "reduce" {
 		c.intermediateFiles[args.TaskFile] = FileStatus{Done, time.Now().Unix()}
+		// remove intermediate files
+		for i := 0; i < len(c.files); i++ {
+			os.Remove("mr-" + strconv.Itoa(i) + "-" + args.TaskFile)
+		}
 	}
 	c.fileMutex.Unlock()
 	return nil
@@ -127,12 +136,6 @@ func (c *Coordinator) Done() bool {
 	for _, status := range c.intermediateFiles {
 		if status.status != Done {
 			return false
-		}
-	}
-	// remove intermediate files
-	for i := 0; i < len(c.files); i++ {
-		for j := 0; j < c.nReduce; j++ {
-			os.Remove("mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(j))
 		}
 	}
 	return true
