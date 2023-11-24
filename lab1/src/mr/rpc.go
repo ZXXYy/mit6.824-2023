@@ -27,17 +27,17 @@ type ExampleReply struct {
 // Add your RPC definitions here.
 type TaskArgs struct{}
 type TaskReply struct {
-	NReduce       int
-	Nmap          int
-	MapTaskNum    int
-	ReduceTaskNum int
-	TaskType      string
-	TaskFile      string
+	NReduce       int    // 告诉worker总共有几个reduce task
+	Nmap          int    // 告诉worker总共有几个map task
+	MapTaskNum    int    // 告诉worker当前处理的是第几个map task
+	ReduceTaskNum int    // 告诉worker当前处理的是第几个reduce task
+	TaskType      string // 告诉worker需要处理的task类型是map还是reduce
+	TaskFile      string // 告诉worker需要处理的文件是哪个
 }
 
 type FinishArgs struct {
-	TaskType string
-	TaskFile string
+	TaskType string // 告诉coordinator当前完成的任务类型
+	TaskFile string // 告诉coordinator当前完成的任务对应的文件
 }
 type FinishReply struct{}
 

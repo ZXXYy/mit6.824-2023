@@ -14,24 +14,23 @@ import (
 type Status int32
 
 const (
-	Ready   Status = 0
-	Process Status = 1
-	Done    Status = 2
+	Ready   Status = 0 // 等待worker处理
+	Process Status = 1 // 有worker正在处理
+	Done    Status = 2 // 已完成处理
 )
 
 type FileStatus struct {
 	status    Status
-	timestamp int64
+	timestamp int64 // 通过timestamp来处理crashed worker的情况，如果worker处理的时间过长，coordinator再次分配该任务给新worker
 }
 
 type Coordinator struct {
-	// Your definitions here.
-	files             map[string]FileStatus
-	filesIndex        map[string]int
-	intermediateFiles map[string]FileStatus
-	intermediateIndex map[string]int
+	files             map[string]FileStatus // 表示需要处理的原始文件，由map函数分析
+	filesIndex        map[string]int        // 给每一个原始文件一个index，便于索引
+	intermediateFiles map[string]FileStatus // 表示map后的中间文件，由reduce函数分析
+	intermediateIndex map[string]int        // 给每一个中间文件一个index，便于索引
 	nReduce           int
-	fileMutex         sync.Mutex
+	fileMutex         sync.Mutex // 整个结构体的锁，防止多个进程对该结构访问造成的数据竞争
 }
 
 // Your code here -- RPC handlers for the worker to call.
