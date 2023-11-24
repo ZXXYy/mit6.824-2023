@@ -27,11 +27,11 @@ type FileStatus struct {
 type Coordinator struct {
 	// Your definitions here.
 	files             map[string]FileStatus
-	fileMutex         sync.Mutex
 	filesIndex        map[string]int
 	intermediateFiles map[string]FileStatus
 	intermediateIndex map[string]int
 	nReduce           int
+	fileMutex         sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -99,14 +99,6 @@ func (c *Coordinator) FinishTask(args *FinishArgs, reply *FinishReply) error {
 		}
 	}
 	c.fileMutex.Unlock()
-	return nil
-}
-
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
 	return nil
 }
 

@@ -36,9 +36,8 @@ type TaskReply struct {
 }
 
 type FinishArgs struct {
-	TaskType          string
-	TaskFile          string
-	IntermediateFiles []string
+	TaskType string
+	TaskFile string
 }
 type FinishReply struct{}
 
