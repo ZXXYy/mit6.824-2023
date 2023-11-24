@@ -41,6 +41,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	for true {
 		// Your worker implementation here.
 		task, taskfile, nreduce, nmap, mapTaskNum, reduceTaskNum := AvailableForTask()
+		// fmt.Printf("%s task %s\n", task, taskfile)
 		if task == "map" {
 			// read taskfile
 			file, err := os.Open("./" + taskfile)
@@ -55,18 +56,26 @@ func Worker(mapf func(string, string) []KeyValue,
 			file.Close()
 			// call mapf
 			kva := mapf(taskfile, string(content))
+
 			intermediatefiles := []string{}
+			intermediate := make(map[int][]KeyValue)
 			// write intermediate files
 			for _, kv := range kva {
-				reducefilenum := strconv.Itoa(ihash(kv.Key) % nreduce)
-				intermediate := "mr-" + strconv.Itoa(mapTaskNum) + "-" + reducefilenum
-				f, err := os.OpenFile(intermediate, os.O_CREATE|os.O_WRONLY, 0644)
+				intermediate[ihash(kv.Key)%nreduce] = append(intermediate[ihash(kv.Key)%nreduce], kv)
+			}
+			for i := 0; i < nreduce; i++ {
+				intermediatefile := "mr-" + strconv.Itoa(mapTaskNum) + "-" + strconv.Itoa(i)
+				// fmt.Printf("write intermediate file %s\n", intermediatefile)
+				intermediatefiles = append(intermediatefiles, intermediatefile)
+				f, err := os.OpenFile(intermediatefile, os.O_CREATE|os.O_WRONLY, 0644)
 				if err != nil {
-					log.Fatalf("cannot open %v", intermediate)
+					log.Fatalf("cannot open %v", intermediatefile)
 				}
 				enc := json.NewEncoder(f)
-				err = enc.Encode(&kv)
-				intermediatefiles = append(intermediatefiles, intermediate)
+				for _, kv := range intermediate[i] {
+					enc.Encode(&kv)
+				}
+				f.Close()
 			}
 			CallFinishTask(task, taskfile, intermediatefiles)
 		} else if task == "reduce" {
@@ -86,6 +95,11 @@ func Worker(mapf func(string, string) []KeyValue,
 					intermediate = append(intermediate, kv)
 				}
 				file.Close()
+				err = os.Remove(intermediatefile)
+				if err != nil {
+					fmt.Println("[Reduce] Clean intermediatefile err:", err)
+					return
+				}
 			}
 			sort.Sort(ByKey(intermediate))
 
@@ -115,6 +129,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			}
 
 			ofile.Close()
+
 			CallFinishTask(task, strconv.Itoa(reduceTaskNum), []string{})
 
 		}

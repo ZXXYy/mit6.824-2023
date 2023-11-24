@@ -1,7 +1,6 @@
 package mr
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -27,13 +26,14 @@ type FileStatus struct {
 type Coordinator struct {
 	// Your definitions here.
 	files             map[string]FileStatus
+	filesIndex        map[string]int
 	intermediateFiles map[string]FileStatus
+	intermediateIndex map[string]int
 	nReduce           int
 }
 
 // Your code here -- RPC handlers for the worker to call.
 func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
-	cnt := 0
 	// deal with crash
 	for file, status := range c.files {
 		if status.status == Process && time.Now().Unix()-status.timestamp > 10 {
@@ -45,22 +45,19 @@ func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 			c.intermediateFiles[file] = FileStatus{Ready, 0}
 		}
 	}
-
 	for file, status := range c.files {
 		if status.status == Ready {
 			reply.TaskType = "map"
 			reply.TaskFile = file
 			reply.NReduce = c.nReduce
 			reply.Nmap = len(c.files)
-			reply.MapTaskNum = cnt
+			reply.MapTaskNum = c.filesIndex[file]
 			reply.ReduceTaskNum = 0
 			c.files[file] = FileStatus{Process, time.Now().Unix()}
-			fmt.Printf("assign map task %s\n", file)
+			// fmt.Printf("assign map task %s\n", file)
 			return nil
 		}
-		cnt++
 	}
-	cnt = 0
 	for file, status := range c.intermediateFiles {
 		if status.status == Ready {
 			reply.TaskType = "reduce"
@@ -68,17 +65,17 @@ func (c *Coordinator) AssignTask(args *TaskArgs, reply *TaskReply) error {
 			reply.NReduce = c.nReduce
 			reply.Nmap = len(c.files)
 			reply.MapTaskNum = 0
-			reply.ReduceTaskNum = cnt
+			reply.ReduceTaskNum = c.intermediateIndex[file]
 			c.intermediateFiles[file] = FileStatus{Process, time.Now().Unix()}
 			return nil
 		}
-		cnt++
 	}
 	return nil
 }
 
 func (c *Coordinator) FinishTask(args *FinishArgs, reply *FinishReply) error {
 	if args.TaskType == "map" {
+		// fmt.Printf("finish map task %s\n", args.TaskFile)
 		c.files[args.TaskFile] = FileStatus{Done, time.Now().Unix()}
 	} else if args.TaskType == "reduce" {
 		c.intermediateFiles[args.TaskFile] = FileStatus{Done, time.Now().Unix()}
@@ -132,14 +129,18 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
 		files:             make(map[string]FileStatus),
+		filesIndex:        make(map[string]int),
 		intermediateFiles: make(map[string]FileStatus),
+		intermediateIndex: make(map[string]int),
 		nReduce:           nReduce,
 	}
-	for _, file := range files {
+	for idx, file := range files {
 		c.files[file] = FileStatus{Ready, 0}
+		c.filesIndex[file] = idx
 	}
 	for i := 0; i < nReduce; i++ {
 		c.intermediateFiles[strconv.Itoa(i)] = FileStatus{Ready, 0}
+		c.intermediateIndex[strconv.Itoa(i)] = i
 	}
 
 	// Your code here.
