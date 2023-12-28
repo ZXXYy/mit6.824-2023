@@ -258,7 +258,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	ok := false
 	for rf.isLeader {
 		ok = rf.peers[server].Call("Raft.AppendEntries", args, reply)
-		time.Sleep(time.Millisecond * time.Duration(100))
+		time.Sleep(time.Millisecond * time.Duration(10))
 	}
 	return ok
 }
@@ -309,14 +309,14 @@ func (rf *Raft) ticker() {
 		// Your code here (2A)
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 50 + (rand.Int63() % 300)
-		time.Sleep(time.Duration(ms) * time.Millisecond)
+		// ms := 100 + (rand.Int63() % 300)
+		// time.Sleep(time.Duration(ms) * time.Millisecond)
 
 		// Check if a leader election should be started.
 		if !rf.isLeader {
 			currentTime := time.Now().UnixNano() / 1e6 // in milliseconds
-			// timeout := 50 + (rand.Int63() % 100)
-			if currentTime-rf.heartbeat < 150 {
+			timeout := 100 + (rand.Int63() % 300)
+			if currentTime-rf.heartbeat < timeout {
 				continue
 			}
 			// fmt.Printf("[%d] %d start a election\n", time.Now().UnixNano()/1e6, rf.me)
