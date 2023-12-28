@@ -19,6 +19,7 @@ package raft
 
 import (
 	//	"bytes"
+
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -65,7 +66,7 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-	heartbeat int // the last time at which the peer heard from the leader
+	heartbeat int64 // the last time at which the peer heard from the leader
 	isLeader  bool
 	votes     int
 
@@ -162,10 +163,14 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
+	// fmt.Printf("peer=%d, currentTerm=%d, votedFor=%d\n", rf.me, rf.currentTerm, rf.votedFor)
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
 	}
 	rf.mu.Lock()
+	if args.Term > rf.currentTerm {
+		rf.votedFor = -1
+	}
 	if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
 		lastlogterm := -1
 		if len(rf.log) != 0 {
@@ -173,10 +178,15 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		}
 		if (args.LastLogTerm >= lastlogterm) && (args.LastLogIndex >= len(rf.log)-1) {
 			rf.votedFor = args.CandidateId
+			rf.currentTerm = args.Term
 			reply.VoteGranted = true
+			rf.isLeader = false
 		}
 	}
 	rf.mu.Unlock()
+	// if reply.VoteGranted {
+	// 	fmt.Printf("%d votes for %d\n", rf.me, args.CandidateId)
+	// }
 }
 
 type AppendEntriesArgs struct{}
@@ -185,7 +195,7 @@ type AppendEntriesReply struct{}
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
-	rf.heartbeat = time.Now().Nanosecond()
+	rf.heartbeat = time.Now().UnixNano() / 1e6
 	rf.isLeader = false
 	rf.mu.Unlock()
 }
@@ -229,7 +239,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		} else if reply.VoteGranted {
 			rf.votes += 1
 		}
-		if rf.votes > len(rf.peers)/2 {
+		if !rf.isLeader && rf.votes > len(rf.peers)/2 {
 			rf.isLeader = true
 			for i := 0; i < len(rf.peers); i++ {
 				if i != rf.me {
@@ -248,7 +258,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	ok := false
 	for rf.isLeader {
 		ok = rf.peers[server].Call("Raft.AppendEntries", args, reply)
-		time.Sleep(time.Duration(10))
+		time.Sleep(time.Millisecond * time.Duration(100))
 	}
 	return ok
 }
@@ -295,21 +305,27 @@ func (rf *Raft) killed() bool {
 }
 
 func (rf *Raft) ticker() {
-	for rf.killed() == false {
-
+	for !rf.killed() {
 		// Your code here (2A)
+		// pause for a random amount of time between 50 and 350
+		// milliseconds.
+		ms := 50 + (rand.Int63() % 300)
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+
 		// Check if a leader election should be started.
 		if !rf.isLeader {
-			currentTime := time.Now().Nanosecond()
-			if currentTime-rf.heartbeat < 1000 {
+			currentTime := time.Now().UnixNano() / 1e6 // in milliseconds
+			// timeout := 50 + (rand.Int63() % 100)
+			if currentTime-rf.heartbeat < 150 {
 				continue
 			}
+			// fmt.Printf("[%d] %d start a election\n", time.Now().UnixNano()/1e6, rf.me)
 			// otherwise, start a leader election
 			rf.mu.Lock()
 			rf.currentTerm++
 			rf.votedFor = rf.me
 			rf.votes = 1
-			rf.heartbeat = time.Now().Nanosecond()
+			rf.heartbeat = time.Now().UnixNano() / 1e6
 			rf.mu.Unlock()
 			for i := 0; i < len(rf.peers); i++ {
 				if i != rf.me {
@@ -327,11 +343,6 @@ func (rf *Raft) ticker() {
 				}
 			}
 		}
-
-		// pause for a random amount of time between 50 and 350
-		// milliseconds.
-		ms := 50 + (rand.Int63() % 300)
-		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
 }
 
@@ -353,6 +364,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.votedFor = -1 // not vote for anyone in this term
+	rf.currentTerm = 0
+	rf.isLeader = false
+	rf.heartbeat = time.Now().UnixNano() / 1e6
+	rf.votes = 0
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
