@@ -26,6 +26,7 @@ import (
 	"time"
 
 	//	"6.5840/labgob"
+
 	"6.5840/labrpc"
 )
 
@@ -189,14 +190,20 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// }
 }
 
-type AppendEntriesArgs struct{}
+type AppendEntriesArgs struct {
+	Term     int // the leader's term
+	LeaderId int // the leader's id
+}
 
 type AppendEntriesReply struct{}
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	// fmt.Printf("Leader=%d follower=%d\n", args.LeaderId, rf.me)
 	rf.mu.Lock()
+	if rf.currentTerm < args.Term {
+		rf.isLeader = false
+	}
 	rf.heartbeat = time.Now().UnixNano() / 1e6
-	rf.isLeader = false
 	rf.mu.Unlock()
 }
 
@@ -244,6 +251,8 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 			for i := 0; i < len(rf.peers); i++ {
 				if i != rf.me {
 					args := AppendEntriesArgs{}
+					args.Term = rf.currentTerm
+					args.LeaderId = rf.me
 					reply := AppendEntriesReply{}
 					go rf.sendAppendEntries(i, &args, &reply)
 				}
@@ -257,8 +266,8 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := false
 	for rf.isLeader {
-		ok = rf.peers[server].Call("Raft.AppendEntries", args, reply)
-		time.Sleep(time.Millisecond * time.Duration(10))
+		go rf.peers[server].Call("Raft.AppendEntries", args, reply)
+		time.Sleep(time.Millisecond * 50)
 	}
 	return ok
 }
@@ -309,13 +318,12 @@ func (rf *Raft) ticker() {
 		// Your code here (2A)
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		// ms := 100 + (rand.Int63() % 300)
-		// time.Sleep(time.Duration(ms) * time.Millisecond)
-
+		ms := 50 + (rand.Int63() % 300)
+		time.Sleep(time.Duration(ms) * time.Millisecond)
 		// Check if a leader election should be started.
 		if !rf.isLeader {
 			currentTime := time.Now().UnixNano() / 1e6 // in milliseconds
-			timeout := 100 + (rand.Int63() % 300)
+			timeout := 150 + (rand.Int63() % 200)
 			if currentTime-rf.heartbeat < timeout {
 				continue
 			}
