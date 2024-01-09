@@ -67,9 +67,10 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-	heartbeat int64 // the last time at which the peer heard from the leader
-	isLeader  bool
-	votes     int
+	heartbeat     int64 // the last time at which the peer heard from the leader
+	electionTimer int64
+	isLeader      bool
+	votes         int
 
 	currentTerm int        // the latest term the peer has seen
 	votedFor    int        // the peer that the peer voted for in the current term
@@ -90,7 +91,8 @@ func (rf *Raft) GetState() (int, bool) {
 	// var term int
 	// var isleader bool
 	// Your code here (2A).
-
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	return rf.currentTerm, rf.isLeader
 }
 
@@ -250,11 +252,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 			rf.isLeader = true
 			for i := 0; i < len(rf.peers); i++ {
 				if i != rf.me {
-					args := AppendEntriesArgs{}
-					args.Term = rf.currentTerm
-					args.LeaderId = rf.me
-					reply := AppendEntriesReply{}
-					go rf.sendAppendEntries(i, &args, &reply)
+					go rf.sendAppendEntries(i)
 				}
 			}
 		}
@@ -263,10 +261,17 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
-func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+func (rf *Raft) sendAppendEntries(server int) bool {
 	ok := false
+	rf.mu.Lock()
+	args := AppendEntriesArgs{
+		Term:     rf.currentTerm,
+		LeaderId: rf.me,
+	}
+	rf.mu.Unlock()
+	reply := AppendEntriesReply{}
 	for rf.isLeader {
-		go rf.peers[server].Call("Raft.AppendEntries", args, reply)
+		go rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 		time.Sleep(time.Millisecond * 50)
 	}
 	return ok
@@ -323,8 +328,7 @@ func (rf *Raft) ticker() {
 		// Check if a leader election should be started.
 		if !rf.isLeader {
 			currentTime := time.Now().UnixNano() / 1e6 // in milliseconds
-			timeout := 150 + (rand.Int63() % 200)
-			if currentTime-rf.heartbeat < timeout {
+			if currentTime-rf.heartbeat < rf.electionTimer {
 				continue
 			}
 			// fmt.Printf("[%d] %d start a election\n", time.Now().UnixNano()/1e6, rf.me)
@@ -375,6 +379,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.currentTerm = 0
 	rf.isLeader = false
 	rf.heartbeat = time.Now().UnixNano() / 1e6
+	rf.electionTimer = 150 + (rand.Int63() % 200)
 	rf.votes = 0
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
