@@ -164,13 +164,16 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 	// fmt.Printf("peer=%d, currentTerm=%d, votedFor=%d\n", rf.me, rf.currentTerm, rf.votedFor)
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
 	}
-	rf.mu.Lock()
+
 	if args.Term > rf.currentTerm {
 		rf.votedFor = -1
 	}
@@ -186,7 +189,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.isLeader = false
 		}
 	}
-	rf.mu.Unlock()
+
 	// if reply.VoteGranted {
 	// 	fmt.Printf("%d votes for %d\n", rf.me, args.CandidateId)
 	// }
@@ -268,11 +271,15 @@ func (rf *Raft) sendAppendEntries(server int) bool {
 		Term:     rf.currentTerm,
 		LeaderId: rf.me,
 	}
+	isleader := rf.isLeader
 	rf.mu.Unlock()
 	reply := AppendEntriesReply{}
-	for rf.isLeader {
+	for isleader {
 		go rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 		time.Sleep(time.Millisecond * 50)
+		rf.mu.Lock()
+		isleader = rf.isLeader
+		rf.mu.Unlock()
 	}
 	return ok
 }
@@ -326,9 +333,13 @@ func (rf *Raft) ticker() {
 		ms := 50 + (rand.Int63() % 300)
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 		// Check if a leader election should be started.
-		if !rf.isLeader {
+		rf.mu.Lock()
+		isleader := rf.isLeader
+		heartbeat := rf.heartbeat
+		rf.mu.Unlock()
+		if !isleader {
 			currentTime := time.Now().UnixNano() / 1e6 // in milliseconds
-			if currentTime-rf.heartbeat < rf.electionTimer {
+			if currentTime-heartbeat < rf.electionTimer {
 				continue
 			}
 			// fmt.Printf("[%d] %d start a election\n", time.Now().UnixNano()/1e6, rf.me)
