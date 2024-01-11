@@ -20,6 +20,7 @@ package raft
 import (
 	//	"bytes"
 
+	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -169,7 +170,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
-	// fmt.Printf("peer=%d, currentTerm=%d, votedFor=%d\n", rf.me, rf.currentTerm, rf.votedFor)
+
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
 	}
@@ -177,6 +178,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term > rf.currentTerm {
 		rf.votedFor = -1
 	}
+	fmt.Printf("peer=%d, currentTerm=%d, requestTerm=%d, votedFor=%d\n", rf.me, rf.currentTerm, args.Term, rf.votedFor)
 	if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
 		lastlogterm := -1
 		if len(rf.log) != 0 {
@@ -187,6 +189,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.currentTerm = args.Term
 			reply.VoteGranted = true
 			rf.isLeader = false
+			rf.votes = 0
+			fmt.Printf("%d votes for %d\n", rf.me, args.CandidateId)
 		}
 	}
 
@@ -207,6 +211,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	if rf.currentTerm < args.Term {
 		rf.isLeader = false
+		rf.votes = 0
 	}
 	rf.heartbeat = time.Now().UnixNano() / 1e6
 	rf.mu.Unlock()
@@ -252,6 +257,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 			rf.votes += 1
 		}
 		if !rf.isLeader && rf.votes > len(rf.peers)/2 {
+			fmt.Printf("%d elected as leader", rf.me)
 			rf.isLeader = true
 			for i := 0; i < len(rf.peers); i++ {
 				if i != rf.me {
@@ -342,14 +348,13 @@ func (rf *Raft) ticker() {
 			if currentTime-heartbeat < rf.electionTimer {
 				continue
 			}
-			// fmt.Printf("[%d] %d start a election\n", time.Now().UnixNano()/1e6, rf.me)
+			fmt.Printf("[%d] %d start a election\n", time.Now().UnixNano()/1e6, rf.me)
 			// otherwise, start a leader election
 			rf.mu.Lock()
 			rf.currentTerm++
 			rf.votedFor = rf.me
 			rf.votes = 1
 			rf.heartbeat = time.Now().UnixNano() / 1e6
-			rf.mu.Unlock()
 			for i := 0; i < len(rf.peers); i++ {
 				if i != rf.me {
 					args := RequestVoteArgs{}
@@ -365,6 +370,7 @@ func (rf *Raft) ticker() {
 					go rf.sendRequestVote(i, &args, &reply)
 				}
 			}
+			rf.mu.Unlock()
 		}
 	}
 }
