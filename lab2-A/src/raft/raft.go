@@ -190,6 +190,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.VoteGranted = true
 			rf.isLeader = false
 			rf.votes = 0
+			rf.heartbeat = time.Now().UnixNano() / 1e6
 			fmt.Printf("%d votes for %d\n", rf.me, args.CandidateId)
 		}
 	}
@@ -257,7 +258,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 			rf.votes += 1
 		}
 		if !rf.isLeader && rf.votes > len(rf.peers)/2 {
-			fmt.Printf("%d elected as leader", rf.me)
+			fmt.Printf("%d elected as leader\n", rf.me)
 			rf.isLeader = true
 			for i := 0; i < len(rf.peers); i++ {
 				if i != rf.me {
@@ -282,7 +283,7 @@ func (rf *Raft) sendAppendEntries(server int) bool {
 	reply := AppendEntriesReply{}
 	for isleader {
 		go rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
-		time.Sleep(time.Millisecond * 50)
+		time.Sleep(time.Millisecond * 10)
 		rf.mu.Lock()
 		isleader = rf.isLeader
 		rf.mu.Unlock()
